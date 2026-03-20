@@ -1,0 +1,11 @@
+life-pattern-ai/
+│
+├── backend/
+│   └── app.py
+│   └── data.db
+│
+├── frontend/
+│   └── index.html
+│
+└── mobile/
+    └── App.js
