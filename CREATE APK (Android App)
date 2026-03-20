@@ -1,0 +1,25 @@
+📱 2. CREATE APK (Android App)
+
+We’ll use Expo (simple & fast)
+
+🚀 Step 1: Install Expo
+npm install -g expo-cli
+🚀 Step 2: Build APK
+
+Inside your mobile folder:
+
+expo build:android
+
+OR (new method):
+
+npx expo prebuild
+npx expo run:android
+
+👉 Expo will give:
+
+Download APK link
+🔥 Important Fix
+
+Replace this in App.js:
+
+fetch("https://your-app.onrender.com/predict")
