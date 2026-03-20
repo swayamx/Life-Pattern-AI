@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Life Pattern AI</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial;
+    background: linear-gradient(135deg,#0f172a,#1e293b);
+    color: white;
+}
+
+.navbar {
+    text-align: center;
+    padding: 15px;
+    font-size: 22px;
+}
+
+.container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit,minmax(300px,1fr));
+}
+
+.card {
+    background: rgba(255,255,255,0.05);
+    margin: 20px;
+    padding: 20px;
+    border-radius: 15px;
+}
+
+input, select, button {
+    width: 100%;
+    padding: 10px;
+    margin: 5px;
+    border-radius: 8px;
+    border: none;
+}
+
+button {
+    background: #38bdf8;
+}
+
+.progress {
+    background: #334155;
+    border-radius: 10px;
+}
+
+.progress-bar {
+    height: 20px;
+    background: #22c55e;
+    width: 0%;
+}
+</style>
+</head>
+
+<body>
+
+<div class="navbar">🧠 Life Pattern AI</div>
+
+<div class="container">
+
+<div class="card">
+<h3>Input</h3>
+<input id="hour" placeholder="Hour">
+<input id="usage" placeholder="Usage">
+<select id="mood">
+<option value="happy">Happy</option>
+<option value="neutral">Neutral</option>
+<option value="stressed">Stressed</option>
+</select>
+<button onclick="predict()">Analyze</button>
+</div>
+
+<div class="card">
+<h3>Result</h3>
+<p id="result"></p>
+<p id="suggestion"></p>
+<p id="burnout"></p>
+</div>
+
+<div class="card">
+<h3>Focus Score</h3>
+<div class="progress">
+<div class="progress-bar" id="bar"></div>
+</div>
+<p id="score"></p>
+</div>
+
+<div class="card">
+<h3>Usage Chart</h3>
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<script>
+let chart;
+
+async function predict() {
+    const hour = document.getElementById("hour").value;
+    const usage = document.getElementById("usage").value;
+    const mood = document.getElementById("mood").value;
+
+    const res = await fetch("http://127.0.0.1:5000/predict", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({hour,usage,mood})
+    });
+
+    const data = await res.json();
+
+    document.getElementById("result").innerText = data.message;
+    document.getElementById("suggestion").innerText = data.suggestion;
+    document.getElementById("burnout").innerText = data.burnout;
+
+    document.getElementById("bar").style.width = data.focus_score + "%";
+    document.getElementById("score").innerText = data.focus_score + "%";
+
+    loadChart();
+}
+
+async function loadChart() {
+    const res = await fetch("http://127.0.0.1:5000/data");
+    const data = await res.json();
+
+    const labels = data.map((_,i)=>"Day "+(i+1));
+    const usage = data.map(d=>d[1]);
+
+    if(chart) chart.destroy();
+
+    const ctx = document.getElementById("chart").getContext("2d");
+
+    chart = new Chart(ctx,{
+        type:"line",
+        data:{
+            labels:labels,
+            datasets:[{label:"Usage",data:usage}]
+        }
+    });
+}
+</script>
+
+</body>
+</html>
