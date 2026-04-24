@@ -1,0 +1,145 @@
+from flask import Flask, request, jsonify
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+import sqlite3
+from contextlib import closing
+
+app = Flask(__name__)
+
+DB_NAME = "data.db"
+
+# ---------------- DATABASE ----------------
+def get_db_connection():
+    return sqlite3.connect(DB_NAME)
+
+def init_db():
+    with closing(get_db_connection()) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hour INTEGER,
+            usage INTEGER,
+            mood INTEGER,
+            productive INTEGER
+        )
+        """)
+        conn.commit()
+
+init_db()
+
+# ---------------- MODEL ----------------
+def load_data():
+    with closing(get_db_connection()) as conn:
+        df = pd.read_sql_query("SELECT hour, usage, mood, productive FROM user_data", conn)
+
+    if df.empty:
+        df = pd.DataFrame({
+            "hour": [6, 7, 8, 20, 21, 22],
+            "usage": [10, 15, 20, 80, 90, 95],
+            "mood": [1, 1, 0, -1, -1, -1],
+            "productive": [1, 1, 1, 0, 0, 0]
+        })
+
+    return df
+
+def train_model():
+    df = load_data()
+
+    X = df[["hour", "usage", "mood"]]
+    y = df["productive"]
+
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X, y)
+
+    return model
+
+model = train_model()
+
+# ---------------- UTIL ----------------
+MOOD_MAP = {"happy": 1, "neutral": 0, "stressed": -1}
+
+def validate_input(data):
+    required = ["hour", "usage", "mood"]
+    for field in required:
+        if field not in data:
+            return False, f"Missing field: {field}"
+
+    if data["mood"] not in MOOD_MAP:
+        return False, "Invalid mood value"
+
+    return True, None
+
+# ---------------- ROUTES ----------------
+@app.route("/predict", methods=["POST"])
+def predict():
+    global model
+
+    data = request.get_json()
+
+    valid, error = validate_input(data)
+    if not valid:
+        return jsonify({"error": error}), 400
+
+    try:
+        hour = int(data["hour"])
+        usage = int(data["usage"])
+        mood = MOOD_MAP[data["mood"]]
+
+        prediction = model.predict([[hour, usage, mood]])[0]
+        confidence = max(model.predict_proba([[hour, usage, mood]])[0])
+
+        # store data
+        with closing(get_db_connection()) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO user_data (hour, usage, mood, productive) VALUES (?, ?, ?, ?)",
+                (hour, usage, mood, int(prediction))
+            )
+            conn.commit()
+
+        # retrain periodically (not every request)
+        if hour % 3 == 0:  
+            model = train_model()
+
+        # ---------------- LOGIC ----------------
+        focus_score = max(0, 100 - usage)
+
+        burnout = "⚠️ Burnout Risk High" if (usage > 80 and hour > 20) else "✅ Normal"
+
+        if prediction == 1:
+            message = "You are PRODUCTIVE"
+            suggestion = "Great time for deep work"
+        else:
+            message = "You are DISTRACTED"
+            suggestion = "Reduce distractions and take short breaks"
+
+        return jsonify({
+            "success": True,
+            "prediction": int(prediction),
+            "confidence": round(float(confidence), 2),
+            "message": message,
+            "suggestion": suggestion,
+            "focus_score": focus_score,
+            "burnout": burnout
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/data", methods=["GET"])
+def get_data():
+    with closing(get_db_connection()) as conn:
+        df = pd.read_sql_query("SELECT * FROM user_data", conn)
+        return jsonify(df.to_dict(orient="records"))
+
+
+@app.route("/")
+def home():
+    return jsonify({"message": "Smart Productivity API running 🚀"})
+
+
+# ---------------- RUN ----------------
+if __name__ == "__main__":
+    app.run(debug=True)
